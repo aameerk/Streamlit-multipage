@@ -13,7 +13,8 @@ st.sidebar.info(
 
 # Set the model engine and your OpenAI API key
 model_engine = "text-davinci-003"
-openai.api_key = "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" #follow step 4 to get a secret_key
+api_key= st.text_input(label="Enter Api key")#follow step 4 to get a secret_key
+api_key = openai.api_key
 
 def main():
     '''
@@ -21,7 +22,7 @@ def main():
     displays the response
     '''
     # Get user input
-    user_query = st.text_input("Enter query here, to exit enter :q", "what is Stock Market?")
+    user_query = st.text_input("Enter query here, to exit enter :q", )
     if user_query != ":q" or user_query != "":
         # Pass the query to the ChatGPT function
         response = ChatGPT(user_query)
