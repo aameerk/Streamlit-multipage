@@ -11,8 +11,8 @@ GitHub Repository: <https://github.com/giswqs/streamlit-multipage-template>
 
 st.sidebar.title("About")
 st.sidebar.info(markdown)
-logo = "https://i.imgur.com/UbOXYAU.png"
-st.sidebar.image(logo)
+
+
 
 # Customize page title
 st.title("Streamlit for Geospatial Applications")
