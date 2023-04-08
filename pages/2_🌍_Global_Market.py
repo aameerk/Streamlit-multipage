@@ -1,377 +1,423 @@
-import streamlit as st
-import time
-from tqdm.notebook import tqdm
-from tensorflow import keras
-import datetime as dt
-from datetime import date
-import yfinance as yf
-import pandas as pd
-from plotly import graph_objs as go
-import  plotly.express as px
-import math
-import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-from keras.models import Sequential
-from keras.layers import Dense, LSTM
-import matplotlib.pyplot as plt
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Oct 18 02:36:59 2019
+
+@author: Admin
+"""
+
 import warnings
-warnings.filterwarnings('ignore')
+import streamlit as st
+import matplotlib.pyplot as plt, pandas as pd, numpy as np
+from PIL import Image
+import fundamentalanalysis as fa
+from statsmodels.tsa.arima.model import ARIMA
 
-START = "2014-01-01"
-TODAY = dt.datetime.now().strftime("%Y-%m-%d")
+from matplotlib.pyplot import rc
+from pandas_datareader import data as pdr
+from datetime import datetime
+import yfinance as yf
 
-st.title("Stock Prediction App")
+yf.pdr_override() # <== that's all it takes :-)
+from dateutil.parser import parse
+from scipy.stats import iqr
+from datetime import timedelta, date
+st.set_option('deprecation.showPyplotGlobalUse', False)
+def hash_complex(x):
+    return hash((x.real, x.imag))
 
-tickers = yf.Tickers()
+@st.cache(show_spinner=False)
+def get_stock_data(ticker, start_date, end_date):
+    data = pdr.get_data_yahoo(ticker, start=start_date, end=end_date)
+    return data.dropna()['Close']
 
-# Create a list of all the ticker symbols
-stocks = [tickers.tickers]
+@st.cache(show_spinner=True,allow_output_mutation=True, hash_funcs={complex: hash_complex})
+def fit_arima_model(data):
+    return ARIMA(data, order=(1, 1, 1)).fit()
 
-
-# Loading Data ---------------------
-
-#@st.cache(suppress_st_warning=True)
-def load_data(ticker):
-    data = yf.download(ticker, START,  TODAY)
-    data.reset_index(inplace=True)
-    return data
-
-
-
-
-
-
-#Plotting Raw Data ---------------------------------------
-
-def plot_raw_data(stock, data_1):
-    df_ticker = yf.Ticker(stock)
-    Name = df_ticker.info['longName']
-    #data1 = df_ticker.history()
-    data_1.reset_index()
-    #st.write(data_1)
-    numeric_df = data_1.select_dtypes(['float', 'int'])
-    numeric_cols = numeric_df.columns.tolist()
-    st.markdown('')
-    st.markdown('**_Features_** you want to **_Plot_**')
-    features_selected = st.multiselect("", numeric_cols)
-    if st.button("Generate Plot"):
-        cust_data = data_1[features_selected]
-        plotly_figure = px.line(data_frame=cust_data, x=data_1['Date'], y=features_selected,
-                                title= Name + ' ' + '<i>timeline</i>')
-        plotly_figure.update_layout(title = {'y':0.9,'x':0.5, 'xanchor': 'center', 'yanchor': 'top'})
-        plotly_figure.update_xaxes(title_text='Date')
-        plotly_figure.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, title="Price"), width=800, height=550)
-        st.plotly_chart(plotly_figure)
+# Load the S&P 500 list
 
 
-#For LSTM MOdel ------------------------------
+# Allow user to enter start and end dates
 
-def create_train_test_LSTM(df, epoch, b_s, ticker_name):
+def set_pub():
+    rc('font', weight='bold')    # bold fonts are easier to see
+    rc('grid', c='0.5', ls='-', lw=0.5)
+    rc('figure', figsize = (10,8))
+    plt.style.use('bmh')
+    rc('lines', linewidth=1.3, color='b')
 
-    df_filtered = df.filter(['Close'])
-    dataset = df_filtered.values
-
-    #Training Data
-    training_data_len = math.ceil(len(dataset) * .7)
-
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(dataset)
-
-    train_data = scaled_data[0: training_data_len, :]
-
-    x_train_data, y_train_data = [], []
-
-    for i in range(60, len(train_data)):
-        x_train_data.append(train_data[i-60:i, 0])
-        y_train_data.append(train_data[i, 0])
-
-    x_train_data, y_train_data = np.array(x_train_data), np.array(y_train_data)
-
-    x_train_data = np.reshape(x_train_data, (x_train_data.shape[0], x_train_data.shape[1], 1))
-
-    #Testing Data
-    test_data = scaled_data[training_data_len - 60:, :]
-
-    x_test_data = []
-    y_test_data = dataset[training_data_len:, :]
-
-    for j in range(60, len(test_data)):
-        x_test_data.append(test_data[j - 60:j, 0])
-
-    x_test_data = np.array(x_test_data)
-
-    x_test_data = np.reshape(x_test_data, (x_test_data.shape[0], x_test_data.shape[1], 1))
+@st.cache(suppress_st_warning=True)
+def loadData(ticker, start, end): 
+     df_stockdata = pdr.get_data_yahoo(ticker, start= str(start), end = str(end) )['Adj Close']   
+     df_stockdata.index = pd.to_datetime(df_stockdata.index)
+     return df_stockdata
 
 
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train_data.shape[1], 1)))
-    model.add(LSTM(units=50, return_sequences=False))
 
-    model.add(Dense(25))
-    model.add(Dense(1))
 
-    model.compile(optimizer='adam', loss='mean_squared_error')
+@st.cache(suppress_st_warning=True)
+def ratio_indicators(ticker):
+    df_ratios = fa.ratios(ticker)
+    return df_ratios
 
-    model.fit(x_train_data, y_train_data, batch_size=int(b_s), epochs=int(epoch))
-    st.success("Your Model is Trained Succesfully!")
-    st.markdown('')
-    st.write("Predicted vs Actual Results for LSTM")
-    st.write("Stock Prediction on Test Data for - ",ticker_name)
+def get_data_yahoo(ticker, start, end):
+    data = pdr.get_data_yahoo(ticker, start= str(start), end = str(end) )
+    return st.dataframe(data)
 
-    predictions = model.predict(x_test_data)
-    predictions = scaler.inverse_transform(predictions)
+        
 
-    train = df_filtered[:training_data_len]
-    valid = df_filtered[training_data_len:]
-    valid['Predictions'] = predictions
+def plotData(ticker, start, end):
+    
+    df_stockdata = loadData(ticker, start, end)
+    df_stockdata.index = pd.to_datetime(df_stockdata.index)
+    
+    
+    set_pub()
+    fig, ax = plt.subplots(2,1)
 
-    new_valid = valid.reset_index()
-    new_valid.drop('index', inplace=True, axis=1)
-    st.dataframe(new_valid)
-    st.markdown('')
-    st.write("Plotting Actual vs Predicted ")
+    
+    ma1_checkbox = st.checkbox('Moving Average 1')
+    
+    ma2_checkbox = st.checkbox('Moving Average 2')
+    
+    ax[0].set_title('Adj Close Price %s' % ticker, fontdict = {'fontsize' : 15})
+    ax[0].plot(df_stockdata.index, df_stockdata.values,'g-',linewidth=1.6)
+    ax[0].set_xlim(ax[0].get_xlim()[0] - 10, ax[0].get_xlim()[1] + 10)
+    ax[0].grid(True)
+    
+    if ma1_checkbox:
+        days1 = st.slider('Business Days to roll MA1', 5, 120, 30)
+        ma1 = df_stockdata.rolling(days1).mean()
+        ax[0].plot(ma1, 'b-', label = 'MA %s days'%days1)
+        ax[0].legend(loc = 'best')
+    if ma2_checkbox:
+        days2 = st.slider('Business Days to roll MA2', 5, 120, 30)
+        ma2 = df_stockdata.rolling(days2).mean()
+        ax[0].plot(ma2, color = 'magenta', label = 'MA %s days'%days2)
+        ax[0].legend(loc = 'best')
+    
+    ax[1].set_title('Daily Total Returns %s' % ticker, fontdict = {'fontsize' : 15})
+    ax[1].plot(df_stockdata.index[1:], df_stockdata.pct_change().values[1:],'r-')
+    ax[1].set_xlim(ax[1].get_xlim()[0] - 10, ax[1].get_xlim()[1] + 10)
+    plt.tight_layout()
+    ax[1].grid(True)
+    st.pyplot()
+    
+def rolling_sharpe(y):
+    def geom_mean(y):
+        y_1 = y + 1
+        y_1_prod = np.prod(y_1)
+        return y_1_prod**(1/(len(y))) - 1
+    return np.sqrt(252) * (geom_mean(y) / y.std())
 
-    st.set_option('deprecation.showPyplotGlobalUse', False)
-    plt.figure(figsize=(14, 8))
-    plt.title('Actual Close prices vs Predicted Using LSTM Model', fontsize=20)
-    plt.plot(valid[['Close', 'Predictions']])
-    plt.legend(['Actual', 'Predictions'], loc='upper left', prop={"size":20})
+
+def plot_std_ret(ticker, start, end):
+    def standard_ret(df):
+        ret = df.pct_change()[1:]
+        mean = ret.values.mean()
+        std = ret.values.std()
+        return (ret - mean) / std
+    
+    fig, ax = plt.subplots(figsize=(9,4))
+    df_stockdata = loadData(ticker, start, end)
+    ax.plot(df_stockdata.index[1:], 
+          standard_ret(df_stockdata).values)
+    ax.set_title('Standardized daily total returns %s'%ticker, fontdict = {'fontsize' : 15})
+    ax.set_xlim(ax.get_xlim()[0] - 10, ax.get_xlim()[1] + 10)
+    plt.grid(True)
     st.pyplot()
 
 
+def plot_trailing(ticker, start, end):
+    ret = loadData(ticker, start, end).pct_change()[1:]
+    days = st.slider('Business Days to roll', 5, 120, 30)
+    trailing_median = ret.rolling(days).median()
+    trailing_max = ret.rolling(days).max()
+    trailing_min = ret.rolling(days).min()
+    trailing_iqr = ret.rolling(days).apply(iqr)
+    q3_rolling = ret.rolling(days).apply(lambda x: np.percentile(x,75))
+    q1_rolling = ret.rolling(days).apply(lambda x: np.percentile(x,25))
+    soglia_upper = trailing_iqr*1.5 + q3_rolling
+    soglia_lower = q1_rolling - trailing_iqr*1.5 
+    trailing_all = pd.concat([trailing_median, trailing_max, trailing_min,trailing_iqr
+                              ,soglia_upper, soglia_lower],
+                             axis = 1)
+    trailing_all.columns = ['Median', 'Max', 'Min','IQR','Q3 + 1.5IQR','Q1 - 1.5IQR']
+    fig, ax = plt.subplots(figsize = (9,5))
+    trailing_all.plot(ax = ax)
+    ax.set_title('Rolling nonParametric Statistics (%s days)'%days
+                     , pad = 30, fontdict = {'fontsize' : 17})
+    ax.set_xlim(ax.get_xlim()[0] - 15, ax.get_xlim()[1] + 15)
+    ax.legend(bbox_to_anchor=(0,0.96,0.96,0.2), loc="lower left",
+                mode="expand", borderaxespad = 1, ncol = 6)
+    ax.set_xlabel('')
+    plt.grid(True)
+    st.pyplot()
+        
+    ii = trailing_all.dropna().reset_index().drop('Date', axis = 1)
+    st.subheader('Rolling nonParametric Statistics (%s days)'%days)
+    print(st.dataframe(trailing_all.dropna()))
+        
+    st.subheader('Interactive chart, {} rolling observations,\
+                     from {} to {}'.format(len(ii), parse(str(trailing_all.dropna().index[0])).date(),
+                     parse(str(trailing_all.dropna().index[-1])).date()))
+    st.line_chart(ii, width=800, height=120)
+    
+    ret = loadData(ticker, start, end).pct_change()[1:]
+    trail_aim = trailing_all[['Q3 + 1.5IQR', 'Q1 - 1.5IQR']]
+    
+    @st.cache(show_spinner=False)
+    def fit_arima_model(data):
+       return ARIMA(data, order=(1, 1, 1)).fit()
+    
+    def daterange(start_date, end_date):
+        days_ = days
+        for n in range(0, int ((end_date - start_date).days), days_):
+            yield start_date + timedelta(n)
+                
+    def outliers():
+        lista = []
+        thresholds = []
+        
+        for i in range(len(ret)-days):
+            ret_ = ret.iloc[i:days+i]
+            trail_ = trail_aim.iloc[days+i]
+            right_ret = np.where(ret_ > trail_['Q3 + 1.5IQR'], 1, 0).sum()
+            left_ret = np.where(ret_ < trail_['Q1 - 1.5IQR'], 1, 0).sum()
+            lista.append((right_ret, left_ret, (i,days+i)))
+            trail_['Q1 - 1.5IQR'] = round(float(trail_['Q1 - 1.5IQR']),4)
+            trail_['Q3 + 1.5IQR'] = round(float(trail_['Q3 + 1.5IQR']),4)
+            thresholds.append((trail_['Q1 - 1.5IQR'], trail_['Q3 + 1.5IQR']))
+        df = pd.DataFrame(np.random.randn(len(ret)-days,2))
+        df.index = [elem[2] for elem in lista]
+         
+        df.columns = ['Left tail', 'Right tail']
+        df['Right tail'] = [elem[0] for elem in lista]
+        df['Left tail'] = [elem[1] for elem in lista]
+        df['Thresholds'] = [t for t in thresholds]
+        
+        df2 = pd.DataFrame()
+        df2['uno'] = [i[0] for i in df.index]
+        df2['due'] = [i[1] for i in df.index]
+        
+      
+        new = pd.DataFrame()
+        new['A'] = [(str(ret.index[i].date()), str(ret.index[i+days].date())) for i in range(len(ret)-days)]
+        new.index = new['A']
+        
+        df.index = new.index
+        
+       
+        return df
+    
+    st.subheader('Number outliers for each datarange (%s business days)'%days)
+    df_outliers = outliers()
+    st.dataframe(df_outliers)
+    st.subheader('Sorted by number of positive outliers (decreasing order)')
+    st.dataframe(df_outliers.sort_values(by = 'Right tail', ascending = False))
+    st.subheader('Sorted by number of negative outliers (decreasing order)')
+    st.dataframe(df_outliers.sort_values(by = 'Left tail',ascending = False))
+   
+   
+    
+def rolling_sharpe_plot(ticker, start, end):
+    data_ = loadData(ticker, start, end)
+    ret = data_.pct_change()[1:]
+    start_sp = data_.index[0].strftime('%Y-%m-%d')
+    sp500 = pdr.get_data_yahoo('^SP500TR', start= start_sp, end = str(end) )
+    sp500_ret = sp500['Close'].pct_change()[1:]
+        
+    days2 = st.slider('Business Days to roll', 5, 130, 50)
+    rs_sp500 = sp500_ret.rolling(days2).apply(rolling_sharpe)
+    rs = ret.rolling(days2).apply(rolling_sharpe)
+    fig, ax = plt.subplots(figsize=(10,4))
+    ax.plot(rs.index, rs.values, 'b-', label = 'Geometric Rolling Sharpe %s'%ticker)
+    ax.plot(rs.index, rs_sp500, 'r-', label = 'Geometric Rolling Sharpe S&P500 (TR)')
+    ax.set_title('Geometric Rolling Sharpe ratio (%s days, annualized)'%days2, fontdict = {'fontsize' : 15})
+    ax.set_xlim(ax.get_xlim()[0] - 15, ax.get_xlim()[1] + 15)
+    ax.legend(loc = 'best')
+    plt.grid(True)
+    st.pyplot()
+    
 
-#Creating Training and Testing Data for other Models ----------------------
+''' # Adjusted close prices and total returns
+   ### (stock prices from *yahoo finance*) '''
 
-def create_train_test_data(df1):
+sp500_list = pd.read_csv('SP500_list.csv')
 
-    data = df1.sort_index(ascending=True, axis=0)
-    new_data = pd.DataFrame(index=range(0, len(df1)), columns=['Date', 'High', 'Low', 'Open', 'Volume', 'Close'])
-
-    for i in range(0, len(data)):
-        new_data['Date'][i] = data['Date'][i]
-        new_data['High'][i] = data['High'][i]
-        new_data['Low'][i] = data['Low'][i]
-        new_data['Open'][i] = data['Open'][i]
-        new_data['Volume'][i] = data['Volume'][i]
-        new_data['Close'][i] = data['Close'][i]
-
-    #Removing the hour, minute and second
-    new_data['Date'] = pd.to_datetime(new_data['Date']).dt.date
-
-    train_data_len = math.ceil(len(new_data) * .8)
-
-    train_data = new_data[:train_data_len]
-    test_data = new_data[train_data_len:]
-
-    return train_data, test_data
+ticker = st.selectbox('Select the ticker if present in the S&P 500 index', sp500_list['Symbol'], index = 30).upper()
+pivot_sector = True
+checkbox_noSP = st.checkbox('Select this box to write the ticker (if not present in the S&P 500 list). \
+                            Deselect to come back to the S&P 500 index stock list')
+if checkbox_noSP:
+    ticker = st.text_input('Write the ticker (check it in yahoo finance)', 'MN.MI').upper()
+    pivot_sector = False
 
 
-#Finding Movinf Average ---------------------------------------
-
-def find_moving_avg(ma_button, df):
-    days = ma_button
-
-    data1 = df.sort_index(ascending=True, axis=0)
-    new_data = pd.DataFrame(index=range(0, len(df)), columns=['Date', 'Close'])
-
-    for i in range(0, len(data1)):
-        new_data['Date'][i] = data1['Date'][i]
-        new_data['Close'][i] = data1['Close'][i]
-
-    new_data['SMA_'+str(days)] = new_data['Close'].rolling(min_periods=1, window=days).mean()
-
-    #new_data.dropna(inplace=True)
-    new_data.isna().sum()
-
-    #st.write(new_data)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=new_data['Date'], y=new_data['Close'], mode='lines', name='Close'))
-    fig.add_trace(go.Scatter(x=new_data['Date'], y=new_data['SMA_'+str(days)], mode='lines', name='SMA_'+str(days)))
-    fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01), height=550, width=800,
-                      autosize=False, margin=dict(l=25, r=75, b=100, t=0))
-
-    st.plotly_chart(fig)
-
-
-#Finding Linear Regression ----------------------------
-
-def Linear_Regression_model(train_data, test_data):
-
-    x_train = train_data.drop(columns=['Date', 'Close'], axis=1)
-    x_test = test_data.drop(columns=['Date', 'Close'], axis=1)
-    y_train = train_data['Close']
-    y_test = test_data['Close']
-
-    #First Create the LinearRegression object and then fit it into the model
-    from sklearn.linear_model import LinearRegression
-
-    model = LinearRegression()
-    model.fit(x_train, y_train)
-
-    #Making the Predictions
-    prediction = model.predict(x_test)
-
-    return prediction
-
-
-#Plotting the Predictions -------------------------
-
-
-def prediction_plot(pred_data, test_data, models, ticker_name):
-
-    test_data['Predicted'] = 0
-    test_data['Predicted'] = pred_data
-
-    #Resetting the index
-    test_data.reset_index(inplace=True, drop=True)
-    st.success("Your Model is Trained Succesfully!")
-    st.markdown('')
-    st.write("Predicted Price vs Actual Close Price Results for - " ,models)
-    st.write("Stock Prediction on Test Data for - ", ticker_name)
-    st.write(test_data[['Date', 'Close', 'Predicted']])
-    st.write("Plotting Close Price vs Predicted Price for - ", models)
-
-    #Plotting the Graph
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=test_data['Date'], y=test_data['Close'], mode='lines', name='Close'))
-    fig.add_trace(go.Scatter(x=test_data['Date'], y=test_data['Predicted'], mode='lines', name='Predicted'))
-    fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01), height=550, width=800,
-                      autosize=False, margin=dict(l=25, r=75, b=100, t=0))
-
-    st.plotly_chart(fig)
+start = st.text_input('Enter the start date in yyyy-mm-dd format:', '2018-01-01')
+end = st.text_input('Enter the end date in yyyy-mm-dd format:', '2019-01-01')
 
 
 
-# Sidebar Menu -----------------------
 
-menu=["Stock Exploration and Feature Extraction", "Train Model"]
-st.sidebar.title("Settings")
-st.sidebar.subheader("Timeseries Settings")
-choices = st.sidebar.selectbox("Select the Activity", menu,index=0)
+try:
+    start = parse(start).date()
+    #print('The start date is valid')
+    control_date1 = True
+except ValueError:
+    st.error('Invalid Start date')
+    control_date1 = False
+ 
+    
+try:
+    end = parse(end).date()
+    #print('The end date is valid')
+    control_date2 = True
+except ValueError:
+    st.error('Invalid End date')
+    control_date2 = False
+
+def check_dates():
+    return control_date1 & control_date2
+
+
+if start <= datetime(1970,1,1,0,0).date():
+    st.error('Please insert a date posterior to 1st January 1970')
+    pivot_date = False
+else:
+    pivot_date = True
+    
+if check_dates() and pivot_date == True:
+    
+        
+    if len(loadData(ticker, start, end)) > 0: # if the ticker is invalid the function returns an empty series
+        
+     
+        image = Image.open('imageforapp2.jpg')
 
 
 
-if choices == 'Stock Exploration and Feature Extraction':
-    st.subheader("Extract Data")
-    #user_input = ''
-    st.markdown('Enter **_Ticker_ Symbol** for the **Stock**')
-    #user_input=st.selectbox("", stocks)
-    user_input = st.text_input("", '')
+        st.sidebar.image(image, caption='',
 
-    if not user_input:
-        pass
-    else:
-        data = load_data(user_input)
-        st.markdown('Select from the options below to Explore Stocks')
-
-        selected_explore = st.selectbox("", options=['Select your Option',
-                                                     'Extract Features for Stock Price Forecasting'], index=0)
-        if selected_explore == 'Stock Financials Exploration':
-            st.markdown('')
-            st.markdown('**_Stock_ _Financial_** Information ------')
-            st.markdown('')
-            st.markdown('')
+                 use_column_width=True)
+        st.sidebar.header('Analysis on Global Market')
+        st.sidebar.subheader('Choose the option to visualize')
+        
+        ticker_meta = yf.Ticker(ticker)
+        
+        series_info  = pd.Series(ticker_meta.info,index = reversed(list(ticker_meta.info.keys())))
+        series_info = series_info.loc[['symbol', 'shortName', 'financialCurrency','exchange', 
+                          'fullExchangeName', 'exchangeTimezoneName', 'marketCap', 'quoteType']]
+        if pivot_sector:
+            sector = sp500_list[sp500_list['Symbol'] == ticker]['Sector']
+            sector = sector.values[0]
+            series_info['sector'] = sector
+        
            
-            plot_raw_data(user_input, data)
-            st.markdown('')
-            shw_SMA = st.checkbox('Show Moving Average')
+        series_info.name = 'Stock'            
+        st.dataframe(series_info)
+        
+        
+        
+        
+        principal_graphs_checkbox = st.sidebar.checkbox('Stock prices and total returns', value = True)
+        if principal_graphs_checkbox:
+            plotData(ticker, start, end)
+        
+        std_ret_checkbox = st.sidebar.checkbox('Standardized daily total returns') 
+        if std_ret_checkbox:
+            plot_std_ret(ticker, start, end)
+       
+        
+        trailing_checkbox = st.sidebar.checkbox('Outlier analysis')
+        if trailing_checkbox:  
+            ''' ## Outlier analysis '''
+            
+            st.markdown('''In order to conduct an outlier analysis we use nonparametrics statistics in a rolling mode. 
+            In financial markets the mean and standard deviation are deceptive, because the returns distribution
+            is not well behaved. The typical distribution of stock returns is skewed and leptokurtic, so 
+            i prefer to use the median as location metric and the interquartile range as dispersion metric.
+            Interquartile range (**IQR**) is defined as *Q3 - Q1*, where *Q3* is the third quartile and *Q1* the first quartile.
+            Each return observation above the upper threshold *Q3 + 1.5IQR* can be considered an outlier in the right 
+            tail of the distribution, and each observation below the lower threshold *Q1 - 1.5IQR* can be considered
+            an outlier in the left tail of the distribution.''')
+            
+            st.subheader('Interquartile range : Q3 - Q1')
+            st.subheader('Upper threshold : Q3 + 1.5IQR')
+            st.subheader('Lower threshold : Q1 - 1.5IQR')
+            st.write('')
+            plot_trailing(ticker, start, end)
+                     
+     
+         
+          
+            
+        rs_checkbox = st.sidebar.checkbox('Rolling Sharpe ratio vs Rolling Sharpe ratio S&P500, (annualized)')
+        if rs_checkbox: 
+            ''' # Rolling Sharpe Ratio '''
+            ''' We compare the geometric rolling sharpe ratio (RSR) of the stock with the geometric rolling sharpe ratio of S&P500 (TR).
+            We calculate the RSR by fixing the risk free rate equal to 0.
+            Hence *RSR = rolling_returns_mean / rolling_returns_std*.
+            ''' 
+            rolling_sharpe_plot(ticker, start, end)
+    
+        historical_prices_checkbox = st.sidebar.checkbox('Historical prices and volumes')
+        if historical_prices_checkbox:
+            st.title('Historical prices and volumes')
+            get_data_yahoo(ticker, start, end)
+        
+        
+    else:
+        st.error('Invalid ticker')
 
-            if shw_SMA:
-                st.write('Stock Data based on Moving Average')
-                st.write('A Moving Average(MA) is a stock indicator that is commonly used in technical analysis')
-                st.write(
-                    'The reason for calculating moving average of a stock is to help smooth out the price of data over '
-                    'a specified period of time by creating a constanly updated average price')
-                st.write(
-                    'A Simple Moving Average (SMA) is a calculation that takes the arithmatic mean of a given set of '
-                    'prices over the specified number of days in the past, for example: over the previous 15, 30, 50, '
-                    '100, or 200 days.')
+st.header("ARIMA MODEL RESULTS")
+# Get the stock data and fit the ARIMA model
+stock_data = get_stock_data(ticker, start, end)
+arima_model = fit_arima_model(stock_data)
 
-                ma_button = st.number_input("Select Number of Days Moving Average", 5, 200)
+# Show the summary of the ARIMA model
+st.write('ARIMA model summary:')
+st.write(arima_model.summary())
 
-                if ma_button:
-                    st.write('You entered the Moving Average for ', ma_button, 'days')
-                    find_moving_avg(ma_button, data)
+# Make a one-step forecast and show the result
+forecast_step = arima_model.forecast().iloc[0]
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    forecast_step = arima_model.forecast().iloc[0]
 
-        elif selected_explore == 'Extract Features for Stock Price Forecasting':
-            st.markdown('Select **_Start_ _Date_ _for_ _Historical_ Stock** Data & features')
-            start_date = st.date_input("", date(2014, 1, 1))
-            st.write('You Selected Data From - ', start_date)
-            submit_button = st.button("Extract Features")
+st.write('One-step forecast:')
+st.write(forecast_step)
 
-            start_row = 0
-            if submit_button:
-                st.write('Extracted Features Dataframe for ', user_input)
-                for i in range(0, len(data)):
-                    if start_date <= pd.to_datetime(data['Date'][i]):
-                        start_row = i
-                        break
-                # data = data.set_index(pd.DatetimeIndex(data['Date'].values))
-                st.write(data.iloc[start_row:, :])
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+import numpy as np
+np.seterr(divide='ignore', invalid='ignore')
 
-elif choices == 'Train Model':
-    st.subheader("Train Machine Learning Models for Stock Prediction")
-    st.markdown('')
-    st.markdown('**_Select_ _Stocks_ _to_ Train**')
-    stock_select = st.selectbox("", stocks, index=0)
-    df1 = load_data(stock_select)
-    df1 = df1.reset_index()
-    df1['Date'] = pd.to_datetime(df1['Date']).dt.date
-    options = ['Select your option', 'Moving Average', 'Linear Regression', 'Random Forest', 'XGBoost', 'LSTM']
-    st.markdown('')
-    st.markdown('**_Select_ _Machine_ _Learning_ _Algorithms_ to Train**')
-    models = st.selectbox("", options)
-    submit = st.button('Train Model')
-
-    if models == 'LSTM':
-        st.markdown('')
-        st.markdown('')
-        st.markdown("**Select the _Number_ _of_ _epochs_ and _batch_ _size_ for _training_ form the following**")
-        st.markdown('')
-        epoch = st.slider("Epochs", 0, 300, step=1)
-        b_s = st.slider("Batch Size", 32, 1024, step=1)
-        if submit:
-            st.write('**Your _final_ _dataframe_ _for_ Training**')
-            st.write(df1[['Date','Close']])
-            create_train_test_LSTM(df1, epoch, b_s, stock_select)
+# Define order and seasonal_order parameters
+order = (1, 0, 0)
+seasonal_order = (1, 1, 1, 12) # Assuming seasonality of 12 months
 
 
-    elif models == 'Linear Regression':
-        if submit:
-            st.write('**Your _final_ _dataframe_ _for_ Training**')
-            st.write(df1[['Date','Close']])
-            train_data, test_data = create_train_test_data(df1)
-            pred_data = Linear_Regression_model(train_data, test_data)
-            prediction_plot(pred_data, test_data, models, stock_select)
 
 
-    elif models == 'Moving Average':
-        ma_button = st.slider('Select Number of Days Moving Average', 0, 200, step=1)
-        submit_1 = st.button('Generate')
-        if submit_1:
-            st.write('Stock Data based on Moving Average')
-            st.write('A Moving Average(MA) is a stock indicator that is commonly used in technical analysis')
-            st.write('The reason for calculating moving average of a stock is to help smooth out the price of data over '
-                  'a specified period of time by creating a constanly updated average price')
-            st.write('A Simple Moving Average (SMA) is a calculation that takes the arithmatic mean of a given set of '
-                 'prices over the specified number of days in the past, for example: over the previous 15, 30, 50, '
-                 '100, or 200 days.')
-            # Calculate moving average
-# The above code is calculating and displaying a moving average (MA) of a stock's closing price based
-# on the number of days selected by a slider input. It uses the pandas rolling function to calculate
-# the MA and then plots the stock's closing price and the MA on a chart using matplotlib. Finally, it
-# displays the chart using Streamlit's st.pyplot function.
-            ma_days = ma_button # get number of days from slider input
-            df1['MA'] = df1['Close'].rolling(window=ma_days).mean()
 
-            # Display chart with moving average
-            import matplotlib.pyplot as plt
-            st.set_option('deprecation.showPyplotGlobalUse', False)
-            plt.plot(df1['Date'], df1['Close'], label='Price')
-            plt.plot(df1['Date'], df1['MA'], label=f'{ma_days}-day MA')
-            plt.xlabel('Date')
-            plt.ylabel('Price')
-            plt.title('Stock Data with Moving Average')
-            plt.legend()
-            st.pyplot(plt.show())
+from pmdarima.arima import auto_arima
+def hash_complex(x):
+    return hash((x.real, x.imag))
+@st.cache(allow_output_mutation=True, hash_funcs={complex: hash_complex})
+def fit_auto_arima(data, seasonal=True):
+    stepwise_fit = auto_arima(data, start_p=1, start_q=1, max_p=3, max_q=3, m=12, 
+                              start_P=0, seasonal=seasonal, d=None, D=1, trace=True,
+                              error_action='ignore', suppress_warnings=True, stepwise=True)
+    return stepwise_fit
+# Show model summary
+data = stock_data
+stepwise_fit = fit_auto_arima(data)
+st.write(stepwise_fit.summary())
+
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+n_periods = 1  # number of periods to forecast
+forecast = stepwise_fit.predict(n_periods=n_periods)
+
+st.text(forecast) 

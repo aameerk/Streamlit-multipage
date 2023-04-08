@@ -13,8 +13,10 @@ st.sidebar.info(
 
 # Set the model engine and your OpenAI API key
 model_engine = "text-davinci-003"
-api_key= st.text_input(label="Enter Api key")#follow step 4 to get a secret_key
+
+api_key= st.text_input(label="Enter your Api key")
 api_key = openai.api_key
+openai.api_key="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"
 
 def main():
     '''
@@ -38,7 +40,7 @@ def ChatGPT(user_query):
     completion = openai.Completion.create(
                                   engine = model_engine,
                                   prompt = user_query,
-                                  max_tokens = 1024,
+                                  max_tokens = 2556,
                                   n = 1,
                                   temperature = 0.5,
                                       )
