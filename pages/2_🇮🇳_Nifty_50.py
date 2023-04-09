@@ -41,7 +41,8 @@ selected_file = st.sidebar.selectbox("Select a CSV file", csv_files)
 if selected_file:
     # Load the selected CSV file into a Pandas dataframe
     df = pd.read_csv(os.path.join(DATA_DIR, selected_file))
-    df = df.dropna()
+    df = df.dropna().drop_duplicates()
+    
     st.text("")
         
 
@@ -155,7 +156,7 @@ if selected_file:
         # Return the forecasted values as JSON
         return jsonify({'forecast': forecast.tolist()})
 
-    st.subheader('Model Summary')
+    st.subheader('Actual Model Summary')
     st.text(str(model.summary()))
     from sklearn.metrics import mean_squared_error
     import math
@@ -163,12 +164,6 @@ if selected_file:
     # Make predictions
     forecast = model.predict(n_periods=len(test_data))
 
-    # Calculate MSE and RMSE
-    mse = mean_squared_error(test_data, forecast)
-    rmse = math.sqrt(mse)
-
-    st.write('Mean Squared Error (MSE):', mse)
-    st.write('Root Mean Square Error (RMSE):', rmse)
 
 
    
@@ -215,33 +210,26 @@ if selected_file:
     # Make predictions with the ARIMA model
    
     
-    import statsmodels.api as sm
+  
+    forecast = model.predict(n_periods=len(train_data))
 
-    model = sm.tsa.arima.ARIMA(train_data, order=(1, 1, 2))
-    fitted = model.fit()
+    # Calculate MSE and RMSE
+    mse = mean_squared_error(train_data, forecast)
+    rmse = math.sqrt(mse)
 
-
-    st.write(fitted.summary())
-
-    fc, se, conf = fitted.forecast(3, alpha=0.05) # 95% conf
-    fc_series = pd.Series(fc, index=test_data.index)
-            
-    st.subheader('Actual vs Predicted Stock Prices')
-
-    chart_data = pd.concat([train_data,test_data, fc_series], axis=1)
-    chart_data.columns = ['Train Data', 'Actual Stock Price','Predicted Stock Price']
-
-    fig1 = plt.figure(figsize=(10,5))
-    plt.plot(chart_data['Train Data'], label='training data')
-    plt.plot(chart_data['Actual Stock Price'], color = 'blue', label='Actual Stock Price')
-    plt.plot(chart_data['Predicted Stock Price'], color = 'orange',label='Predicted Stock Price')
-    plt.xlabel('Time')
-    plt.ylabel('Stock Price')
-    plt.legend(loc='upper left', fontsize=8)
-    st.pyplot(fig1)
-        
-
-
-# Flask API endpoint for fitting the ARIMA model
+    st.write('Mean Squared Error (MSE):', mse)
+    st.write('Root Mean Square Error (RMSE):', rmse)
+    import matplotlib.pyplot as plt
    
 
+    # Create forecast plot
+    plt.figure(figsize=(10, 5))
+    plt.plot(test_data, label='Predicted')
+    plt.plot(forecast, color='red', label='Actual')
+    plt.xlabel('Time')
+    plt.ylabel('Value')
+    plt.title('Actual vs. Predicted Values')
+    plt.legend()
+
+    # Show plot in Streamlit app
+    st.pyplot()

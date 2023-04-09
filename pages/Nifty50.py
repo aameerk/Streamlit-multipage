@@ -81,7 +81,7 @@ def plot_stationarity(timeseries):
     ax.set_ylabel('Price (log scale)',fontsize=15)
     ax.legend(loc='best')
     st.pyplot(fig)
-
+    
 def test_stationarity(timeseries):
     # Compute rolling statistics and perform Dickey-Fuller test
     # Generate moving average and moving standard deviation
@@ -141,7 +141,7 @@ def main():
     datasetLogScaleMinusExponentialMovingAverage = df1_logScale - exponentialDecayWeightedAverage
     datasetLogScaleMinusExponentialMovingAverage = datasetLogScaleMinusExponentialMovingAverage.dropna().drop_duplicates()
     test_stationarity(datasetLogScaleMinusExponentialMovingAverage)
-
+    
     datasetLogDiffShifting = df1_logScale - df1_logScale.shift()
     fig, ax = plt.subplots(figsize=(20, 8))
     ax.plot(datasetLogDiffShifting, label='Time Shift Transformation')
@@ -164,10 +164,6 @@ def main():
     lag_acf = acf(datasetLogDiffShifting, nlags=20)
     lag_pacf = pacf(datasetLogDiffShifting, nlags=20, method='ols')
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    plot_acf(datasetLogDiffShifting, ax=ax1, lags=20)
-    plot_pacf(datasetLogDiffShifting, ax=ax2, lags=20)
-    st.pyplot(fig)
     
     model_type = st.selectbox('Model Type', ['ARIMA', 'ARMA', 'MA'])
     if model_type == 'ARIMA':
