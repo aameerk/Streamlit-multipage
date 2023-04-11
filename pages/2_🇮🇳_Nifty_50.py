@@ -27,7 +27,7 @@ def fit_arima_model(data):
     return ARIMA(data, order=(1, 1, 1)).fit()
 # Define the Flask app
 app = Flask(__name__)
-st.header("Stock Prediction Web Application")
+st.header("Nifty 50 Data Analysis and Prediction")
 # Define the paths and directories
 ROOT_DIR = "/kaggle/input"
 DATA_DIR = "/Users/aameerkhan/Desktop/Streamlit-multipage/archive"
