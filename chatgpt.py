@@ -15,7 +15,7 @@ st.sidebar.info(
 model_engine = "text-davinci-003"
 api_key = st.text_input("Enter the Api key.")
 api_key = openai.api_key
-openai.api_key="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"
+openai.api_key="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"
 
 def main():
     '''

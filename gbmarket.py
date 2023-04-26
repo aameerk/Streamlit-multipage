@@ -306,16 +306,14 @@ if check_dates() and pivot_date == True:
         ticker_meta = yf.Ticker(ticker)
         
         series_info  = pd.Series(ticker_meta.info,index = reversed(list(ticker_meta.info.keys())))
-        series_info = series_info.loc[['symbol', 'shortName', 'financialCurrency','exchange', 
-                          'fullExchangeName', 'exchangeTimezoneName', 'marketCap', 'quoteType']]
+        
         if pivot_sector:
             sector = sp500_list[sp500_list['Symbol'] == ticker]['Sector']
             sector = sector.values[0]
             series_info['sector'] = sector
         
            
-        series_info.name = 'Stock'            
-        st.dataframe(series_info)
+       
         
         
         

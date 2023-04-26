@@ -31,22 +31,3 @@ with col1:
 with col2:
     twitterimg = Image.open('/Users/aameerkhan/Desktop/Streamlit-multipage/assests/twitterimg.png')
     st.image(twitterimg,caption="Twitter Logo",width=320)
-
-pages = {
-    "Home": page_home,
-    "My Second App": load_app("pages/my_second_app.py"),
-}
-default_page = "Home"
-
-# Create App
-def app():
-    st.set_page_config(layout="wide")
-    
-    # Add a selectbox to the sidebar:
-    selection = st.sidebar.radio("Go to", list(pages.keys()), index=0)
-    
-    # Display the selected page with the session state:
-    pages[selection].app()
-
-if __name__ == "__main__":
-    app()

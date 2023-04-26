@@ -20,8 +20,8 @@ def get_input():
 	period = st.sidebar.text_input("Period (In Days)", "30")
 	return start_date, end_date, period
 
-image = Image.open('eth.png')
-st.image(image, use_column_width=True)
+
+
 
 START = "13-09-2015"
 TODAY = date.today().strftime("%d-%M-%Y")
